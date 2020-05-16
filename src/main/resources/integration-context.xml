@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:int="http://www.springframework.org/schema/integration"
+	xmlns:task="http://www.springframework.org/schema/task"
+	xmlns:int-jms="http://www.springframework.org/schema/integration/jms"
+	xsi:schemaLocation="
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task-4.3.xsd
+		http://www.springframework.org/schema/integration/jms http://www.springframework.org/schema/integration/jms/spring-integration-jms-5.2.xsd
+		http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-5.2.xsd">
+	
+	<!-- 1 - Method invocation sends a Message to the queue -->
+	<int:gateway service-interface="br.com.bcp.PersonGateway" default-request-channel="inboundChannel"></int:gateway>
+
+	<!-- 2 - Payload is converted from object to string -->
+	<int:object-to-string-transformer input-channel="inboundChannel" output-channel="outboundChannel"/>
+	
+	<!-- 3 - Payload is sent to Queue -->
+	<!-- 5 - Check the reply-queue for messages (after step 4) and pass them to service activator -->
+	<int-jms:outbound-gateway
+		connection-factory="connectionFactory"
+		request-destination="sampleQueue"
+		request-channel="outboundChannel"
+		reply-destination="replyQueue"
+		reply-channel="replyChannel"/>
+	<int:service-activator ref="message-handler" method="checkResult" input-channel="replyChannel"/>	
+
+	<!-- 
+	4 - Will check the queue for messages to process and pass them to service activator 
+	5 - The return of service activator is sent to replyQueue
+	-->
+	<int-jms:inbound-gateway
+		connection-factory="connectionFactory"
+		request-destination="sampleQueue"
+		request-channel="jmsChannel"
+		default-reply-destination="replyQueue"/>
+	<int:service-activator ref="message-handler" method="convertToUpperCase" input-channel="jmsChannel"/>	
+	
+	<bean id="message-handler" class="br.com.bcp.MessageHandler"/>
+	<int:channel id="inboundChannel"/>
+	<int:channel id="outboundChannel"/>
+	<int:channel id="jmsChannel"/>
+	<int:channel id="replyChannel"/>
+	
+	<bean id="connectionFactory" class="org.springframework.jms.connection.CachingConnectionFactory">
+		<property name="targetConnectionFactory">
+			<bean class="org.apache.activemq.ActiveMQConnectionFactory">
+				<property name="brokerURL" value="tcp://localhost:61616"/>
+			</bean>
+		</property>
+	</bean>
+
+	<bean id="replyQueue" class="org.apache.activemq.command.ActiveMQQueue">
+		<constructor-arg value="reply.queue"></constructor-arg>
+	</bean>
+		
+	<bean id="sampleQueue" class="org.apache.activemq.command.ActiveMQQueue">
+		<constructor-arg value="sample.queue"></constructor-arg>
+	</bean>
+	
+</beans>
